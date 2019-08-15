@@ -1,36 +1,119 @@
-# This is a template for a Perl scraper on morph.io (https://morph.io)
-# including some code snippets below that you should find helpful
+#!/usr/bin/env perl
 
-# use LWP::Simple;
-# use HTML::TreeBuilder;
-# use Database::DumpTruck;
+use strict;
+use warnings;
 
-# use strict;
-# use warnings;
+use Database::DumpTruck;
+use Encode qw(decode_utf8 encode_utf8);
+use HTML::TreeBuilder;
+use LWP::UserAgent;
+use English; #OUTPUT_AUTOFLUSH
 
-# # Turn off output buffering
-# $| = 1;
+# Don't buffer.
+$OUTPUT_AUTOFLUSH = 1;
 
-# # Read out and parse a web page
-# my $tb = HTML::TreeBuilder->new_from_content(get('http://example.com/'));
+my $base_url = 'https://www.bezrealitky.cz';
+my $long_url = $base_url . '/vypis/nabidka-prodej/byt/jihomoravsky-kraj/okres-brno-mesto?ownership%5B0%5D=osobni&construction%5B0%5D=cihla';
 
-# # Look for <tr>s of <table id="hello">
-# my @rows = $tb->look_down(
-#     _tag => 'tr',
-#     sub { shift->parent->attr('id') eq 'hello' }
-# );
+my $dt = Database::DumpTruck->new({
+	'dbname' => 'data.sqlite',
+	'table' => 'data',
+});
 
-# # Open a database handle
-# my $dt = Database::DumpTruck->new({dbname => 'data.sqlite', table => 'data'});
-#
-# # Insert some records into the database
-# $dt->insert([{
-#     Name => 'Susan',
-#     Occupation => 'Software Developer'
-# }]);
+my $ua = LWP::UserAgent->new(timeout => 10);
+$ua->env_proxy;
 
-# You don't have to do things with the HTML::TreeBuilder and Database::DumpTruck libraries.
-# You can use whatever libraries you want: https://morph.io/documentation/perl
-# All that matters is that your final data is written to an SQLite database
-# called "data.sqlite" in the current working directory which has at least a table
-# called "data".
+# datum bude posledny den kedy bol inzerat este zverejneny
+my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime();
+$year += 1900;
+my $date =  "$year/$mon/$mday";
+ 
+my $table;
+
+sub scrape_page($) {
+	my ($url) = @_;
+	print 'Page: ' . $url . "\n";
+	my $response = $ua->get($url);
+	 
+	my $data;
+	if ($response->is_success) {
+	    $data = $response->decoded_content;
+	}
+	else {
+	    die $response->status_line;
+	}
+
+	my $root = HTML::TreeBuilder->new;
+	$root->parse(decode_utf8($data));
+	$root->elementify;
+
+	$table = $root->look_down('class' => 'b-filter__inner pb-40');
+
+	my @tr = $table->look_down('class' => 'mb-20');
+
+	foreach my $tr (@tr) {
+		my $popis = $tr->look_down('class' =>  'product__info-text')->as_text;
+		my $text = $tr->look_down('class', 'product__link js-product-link')->as_text;
+		print encode_utf8($text) . "\n";
+
+		my ($ulice, $cast);
+		if (encode_utf8($text) =~ /^\s?Staré Brno/) {
+			$cast = decode_utf8('Staré Brno');
+		} elsif ($text =~ /Brno - /) {
+			($ulice, $cast) = $text =~ /^(.+)?,? ?Brno - ([\S ]+), Jihom/;
+		} else {
+			($ulice, $cast) = $text =~ /(.+), (.+),/;
+		};
+
+		if ($ulice) {
+			$ulice =~ s/, //;
+			$ulice =~ s/^ //;
+		} else {
+			$ulice = '';
+		};
+
+		print encode_utf8($ulice) . ' ' . encode_utf8($cast) . "\n";
+
+		my $link = $base_url . $tr->look_down('class', 'product__link js-product-link')->attr_get_i('href');
+		my $product_note = $tr->look_down('class' =>  'product__note')->as_text;
+		my ($dispozice, $velikost) = $product_note =~ /Prodej bytu (\S+), (\d+) /;
+		my $product_value = $tr->look_down('class' =>  'product__value')->as_text;
+		my ($cena) = $product_value =~ /([\d\.]+) K/;
+		$cena =~ s/\.//g;
+
+		print "\n";
+
+		$dt->upsert({
+			'Popis' => $popis,
+			'Ulice' => $ulice,
+			'Lokalita' => $cast,
+			'Url' => $link,
+			'Dispozice' => $dispozice,
+			'Rozloha' => $velikost,
+			'Cena' => $cena,
+			'Zdroj' => 'bezrealitky',
+			'Datum' => $date,
+			'Za_metr' => sprintf('%.2f', $cena / $velikost),
+		});
+	}
+};
+
+scrape_page($long_url);
+
+$dt->create_index(['Url'], undef, 'IF NOT EXISTS', 'UNIQUE');
+
+my @tr = $table->look_down('class' => 'page-link pagination__page');
+my $cur_page = 1;
+my $max_page = 1;
+foreach my $tr (@tr) {
+	my $page = encode_utf8($tr->as_text);
+	if ($page !~ /\d+/) {
+		next;
+	} else {
+		$max_page = $page;
+	};
+};
+
+for (++$cur_page; $cur_page <= $max_page; $cur_page++) {
+	scrape_page($long_url . '&page=' . $cur_page);
+};
