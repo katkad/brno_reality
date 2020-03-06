@@ -12,6 +12,8 @@ use English; #OUTPUT_AUTOFLUSH
 # Don't buffer.
 $OUTPUT_AUTOFLUSH = 1;
 
+binmode STDOUT, ":encoding(UTF-8)";
+
 my $base_url = 'https://www.bezrealitky.cz';
 my $long_url = $base_url . '/vypis/nabidka-prodej/byt/jihomoravsky-kraj/okres-brno-mesto?ownership%5B0%5D=osobni&construction%5B0%5D=cihla';
 
@@ -44,7 +46,7 @@ sub scrape_page($) {
 	}
 
 	my $root = HTML::TreeBuilder->new;
-	$root->parse(decode_utf8($data));
+	$root->parse($data);
 	$root->elementify;
 
 	$table = $root->look_down('class' => 'b-filter__inner pb-40');
@@ -54,7 +56,7 @@ sub scrape_page($) {
 	foreach my $tr (@tr) {
 		my $popis = $tr->look_down('class' =>  'product__info-text')->as_text;
 		my $text = $tr->look_down('class', 'product__link js-product-link')->as_text;
-		print encode_utf8($text) . "\n";
+		print $text . "\n";
 
 		my ($ulice, $cast);
 		if (encode_utf8($text) =~ /^\s?Staré Brno/) {
@@ -72,7 +74,7 @@ sub scrape_page($) {
 			$ulice = '';
 		};
 
-		print encode_utf8($ulice) . ' ' . encode_utf8($cast) . "\n";
+		print $ulice . ' ' . $cast . "\n";
 
 		my $link = $base_url . $tr->look_down('class', 'product__link js-product-link')->attr_get_i('href');
 		my $product_note = $tr->look_down('class' =>  'product__note')->as_text;
