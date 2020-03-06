@@ -28,6 +28,8 @@ $ua->env_proxy;
 # datum bude posledny den kedy bol inzerat este zverejneny
 my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime();
 $year += 1900;
+# $mon the month in the range 0..11
+$mon++;
 my $date =  "$year/$mon/$mday";
  
 my $table;
