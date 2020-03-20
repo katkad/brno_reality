@@ -53,7 +53,7 @@ sub scrape_page($) {
 
 	$table = $root->look_down('class' => 'b-filter__inner pb-40');
 
-	my @tr = $table->look_down('class' => 'mb-20');
+	my @tr = $table->look_down('class' => 'mb-4');
 
 	foreach my $tr (@tr) {
 		my $popis = $tr->look_down('class' =>  'product__info-text')->as_text;
@@ -80,7 +80,7 @@ sub scrape_page($) {
 
 		my $link = $base_url . $tr->look_down('class', 'product__link js-product-link')->attr_get_i('href');
 		my $product_note = $tr->look_down('class' =>  'product__note')->as_text;
-		my ($dispozice, $velikost) = $product_note =~ /Prodej bytu (\S+), (\d+) /;
+		my ($dispozice, $velikost) = $product_note =~ /Prodej bytu ?(\S+)?, (\d+) /;
 		my $product_value = $tr->look_down('class' =>  'product__value')->as_text;
 		my ($cena) = $product_value =~ /([\d\.]+) K/;
 		$cena =~ s/\.//g;
