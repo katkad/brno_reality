@@ -81,7 +81,9 @@ sub scrape_page($) {
 		my $link = $base_url . $tr->look_down('class', 'product__link js-product-link')->attr_get_i('href');
 		my $product_note = $tr->look_down('class' =>  'product__note')->as_text;
 		my ($dispozice, $velikost) = $product_note =~ /Prodej bytu ?(\S+)?\s+(\d+) /;
+
 		my $product_value = $tr->look_down('class' =>  'product__value')->as_text;
+		print $product_value . "\n";
 		my ($cena) = $product_value =~ /([\d\.]+) K/;
 		$cena =~ s/\.//g;
 
